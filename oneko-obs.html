@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      background: transparent;
+      overflow: hidden;
+    }
+    #oneko {
+      width: 64px;
+      height: 64px;
+      position: fixed;
+      image-rendering: pixelated;
+      background-image: url('oneko.gif');
+      background-size: 512px 256px;
+      background-repeat: no-repeat;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <div id="oneko"></div>
+
+  <script>
+    const CHESS_USER   = 'rahul';
+    const POLL_MS      = 15000;
+    const REACT_WINDOW = 90;
+    const CAT          = 64;
+    const MAR          = 20;
+    const BASE_SPD     = 120;
+    const FAST_SPD     = 280;
+    const SPRITE_INT   = 150;
+
+    const sprites = {
+      idle:        [[-3, -3]],
+      alert:       [[-7, -3]],
+      tired:       [[-3, -2]],
+      sleeping:    [[-2, 0], [-2, -1]],
+      scratchSelf: [[-5, 0], [-6, 0], [-7, 0]],
+      E:           [[-3, 0],  [-3, -1]],
+      W:           [[-4, -2], [-4, -3]],
+    };
+
+    const el = document.getElementById('oneko');
+    let x = Math.random() * (window.innerWidth - CAT);
+    let y = window.innerHeight - CAT - MAR;
+
+    let mode      = 'normal';
+    let modeTimer = 0;
+    let state     = 'alert';
+    let direction = 'E';
+    let stateMs   = 600;
+    let spriteMs  = 0;
+    let spriteFrame = 0;
+
+    function pickNewState() {
+      const r = Math.random();
+      if (r < 0.45) {
+        state = 'walk'; direction = Math.random() < 0.5 ? 'E' : 'W';
+        stateMs = 3000 + Math.random() * 8000;
+      } else if (r < 0.62) {
+        state = 'idle';        stateMs = 2000 + Math.random() * 4000;
+      } else if (r < 0.76) {
+        state = 'scratchSelf'; stateMs = 1500 + Math.random() * 2000;
+      } else if (r < 0.88) {
+        state = 'tired';       stateMs = 1000 + Math.random() * 2000;
+      } else {
+        state = 'sleeping';    stateMs = 6000 + Math.random() * 15000;
+      }
+      spriteFrame = 0;
+    }
+
+    function setSprite(name, frame) {
+      const set = sprites[name];
+      if (!set) return;
+      const [col, row] = set[frame % set.length];
+      el.style.backgroundPosition = `${col * 64}px ${row * 64}px`;
+    }
+
+    function triggerWin() {
+      mode = 'win'; modeTimer = 12000;
+      direction = Math.random() < 0.5 ? 'E' : 'W';
+      spriteFrame = 0;
+    }
+
+    function triggerLoss() {
+      mode = 'loss'; modeTimer = 18000;
+      state = 'tired'; spriteFrame = 0;
+    }
+
+    let last = null;
+    function tick(now) {
+      if (!last) last = now;
+      const dt = Math.min(now - last, 100);
+      last = now;
+
+      spriteMs += dt;
+      if (spriteMs >= SPRITE_INT) { spriteMs -= SPRITE_INT; spriteFrame++; }
+
+      const maxX = window.innerWidth - CAT;
+      y = window.innerHeight - CAT - MAR;
+
+      if (mode === 'win') {
+        modeTimer -= dt;
+        const dist = FAST_SPD * dt / 1000;
+        if (direction === 'E') { x = Math.min(x + dist, maxX); if (x >= maxX) direction = 'W'; }
+        else                   { x = Math.max(x - dist, 0);    if (x <= 0)    direction = 'E'; }
+        setSprite(direction, spriteFrame);
+        if (modeTimer <= 0) { mode = 'normal'; pickNewState(); }
+
+      } else if (mode === 'loss') {
+        modeTimer -= dt;
+        setSprite(modeTimer > 8000 ? 'tired' : 'sleeping', spriteFrame);
+        if (modeTimer <= 0) { mode = 'normal'; state = 'alert'; stateMs = 600; }
+
+      } else {
+        stateMs -= dt;
+        if (state === 'walk') {
+          const dist = BASE_SPD * dt / 1000;
+          if (direction === 'E') { x = Math.min(x + dist, maxX); if (x >= maxX) { state = 'alert'; stateMs = 600; } }
+          else                   { x = Math.max(x - dist, 0);    if (x <= 0)    { state = 'alert'; stateMs = 600; } }
+        }
+        switch (state) {
+          case 'walk':        setSprite(direction,     spriteFrame); break;
+          case 'idle':        setSprite('idle',        0);           break;
+          case 'alert':       setSprite('alert',       0);           break;
+          case 'scratchSelf': setSprite('scratchSelf', spriteFrame); break;
+          case 'tired':       setSprite('tired',       0);           break;
+          case 'sleeping':    setSprite('sleeping',    spriteFrame); break;
+        }
+        if (stateMs <= 0) {
+          if (state === 'alert')         { direction = direction === 'E' ? 'W' : 'E'; pickNewState(); }
+          else if (state === 'tired')    { state = 'sleeping'; stateMs = 8000 + Math.random() * 15000; }
+          else if (state === 'sleeping') { state = 'alert';    stateMs = 600; }
+          else pickNewState();
+        }
+      }
+
+      el.style.left = Math.round(x) + 'px';
+      el.style.top  = Math.round(y) + 'px';
+      requestAnimationFrame(tick);
+    }
+
+    el.style.left    = Math.round(x) + 'px';
+    el.style.top     = Math.round(y) + 'px';
+    el.style.opacity = '1';
+    requestAnimationFrame(tick);
+
+    // ── chess.com polling ────────────────────────────────────────────────────
+    let seenGameIds = new Set();
+    let firstPoll   = true;
+
+    async function pollChess() {
+      try {
+        const now  = new Date();
+        const yyyy = now.getUTCFullYear();
+        const mm   = String(now.getUTCMonth() + 1).padStart(2, '0');
+        const res  = await fetch(
+          `https://api.chess.com/pub/player/${CHESS_USER}/games/${yyyy}/${mm}`,
+          { headers: { 'User-Agent': 'oneko-obs-overlay/1.0' } }
+        );
+        if (!res.ok) return;
+        const { games = [] } = await res.json();
+        const nowSec = Math.floor(Date.now() / 1000);
+
+        for (const g of games) {
+          const id = g.url;
+          if (seenGameIds.has(id)) continue;
+          seenGameIds.add(id);
+          if (firstPoll) continue;
+          if (!g.end_time || nowSec - g.end_time > REACT_WINDOW) continue;
+
+          const isWhite = g.white?.username?.toLowerCase() === CHESS_USER.toLowerCase();
+          const result  = isWhite ? g.white?.result : g.black?.result;
+
+          if (result === 'win') triggerWin();
+          else if (['resigned','checkmated','timeout','abandoned','lose'].includes(result)) triggerLoss();
+        }
+        firstPoll = false;
+      } catch (_) {}
+    }
+
+    pollChess();
+    setInterval(pollChess, POLL_MS);
+  </script>
+</body>
+</html>
